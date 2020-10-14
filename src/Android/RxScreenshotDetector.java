@@ -28,6 +28,7 @@ import android.Manifest;
 import android.annotation.TargetApi;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
@@ -35,6 +36,13 @@ import android.os.Build;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.webkit.WebView;
+import org.apache.cordova.CallbackContext;
+import org.apache.cordova.CordovaWebView;
+import org.apache.cordova.PluginResult;
+import org.apache.cordova.engine.SystemWebView;
+import org.json.JSONArray;
+import org.json.JSONException;
 
 import rx.Observable;
 import rx.Scheduler;
@@ -51,7 +59,6 @@ import rx.subscriptions.Subscriptions;
 public final class RxScreenshotDetector {
 
     private static final String TAG = "RxScreenshotDetector";
-
     private static final String EXTERNAL_CONTENT_URI_MATCHER =
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI.toString();
     private static final String[] PROJECTION = new String[] {
@@ -73,47 +80,32 @@ public final class RxScreenshotDetector {
      * @return {@link Observable} that emits screenshot file path.
      */
     @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
-    public static Observable<String> start(final Context context) {
-        return startAfterPermissionGranted(context);
+    public static Observable<String> start(final CallbackContext callbackContext, CordovaWebView webView, ScreenShot instance, Context context) {
+        return startAfterPermissionGranted(callbackContext, webView, instance, context);
     }
 
-    private static Observable<String> startAfterPermissionGranted(Context context) {
-        final ContentResolver contentResolver = context.getContentResolver();
+    private static Observable<String> startAfterPermissionGranted(CallbackContext callbackContext, CordovaWebView webView, ScreenShot instance, Context context) {
+
+
+        final ContentResolver contentResolver =  context.getContentResolver();
         return Observable.create(new Observable.OnSubscribe<String>() {
             @Override
             public void call(final Subscriber<? super String> subscriber) {
                 final ContentObserver contentObserver = new ContentObserver(null) {
+
                     @Override
                     public void onChange(boolean selfChange, Uri uri) {
-                        Log.d(TAG, "onChange: " + selfChange + ", " + uri.toString());
+                        JSONArray args = new JSONArray();
+                        try {
+                            instance.execute("screenshot", args, callbackContext);
 
-                        if (uri.toString().contains(EXTERNAL_CONTENT_URI_MATCHER)) {
-                            Cursor cursor = null;
-                            try {
-
-                                cursor = contentResolver.query(uri, PROJECTION, null, null,
-                                        SORT_ORDER);
-                                if (cursor != null && cursor.moveToFirst()) {
-                                    String path = cursor.getString(
-                                            cursor.getColumnIndex(MediaStore.Images.Media.DATA));
-                                    long dateAdded = cursor.getLong(cursor.getColumnIndex(
-                                            MediaStore.Images.Media.DATE_ADDED));
-                                    long currentTime = System.currentTimeMillis() / 1000;
-                                    Log.d(TAG, "path: " + path + ", dateAdded: " + dateAdded +
-                                            ", currentTime: " + currentTime);
-                                    if (matchPath(path) && matchTime(currentTime, dateAdded)) {
-                                        subscriber.onNext(path);
-                                    }
-                                }
-                            } catch (Exception e) {
-                                Log.d(TAG, "open cursor fail");
-                            } finally {
-                                if (cursor != null) {
-                                    cursor.close();
-                                }
-                            }
+                        } catch (JSONException e) {
+                            Log.d(TAG, "exception");
                         }
+
+
                         super.onChange(selfChange, uri);
+
                     }
                 };
                 contentResolver.registerContentObserver(
